@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from openai import OpenAI
+# from openai import OpenAI # <--- openai パッケージは不要になります
 import time
 import random
 from datetime import datetime, timedelta
@@ -8,18 +8,15 @@ import re
 from urllib.parse import quote
 import json
 from colorama import Fore, Style, init
-import time
-import random
 
 # カラー出力の初期化
 init(autoreset=True)
 
 class RealTimeNewsAnalyzer:
     def __init__(self, openrouter_api_key):
-        self.client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=openrouter_api_key,
-        )
+        # self.client = OpenAI(...) # <--- この行を削除
+        self.openrouter_api_key = openrouter_api_key
+        self.base_url = "https://openrouter.ai/api/v1"
         self.target_companies = [
             "XIAOMI", "SEMICONDUCTOR MANUFACTURING", "BYD CO LTD-H", 
             "ALIBABA", "NETEASE", "TENCENT", "TRIP.COM", 
@@ -144,10 +141,10 @@ class RealTimeNewsAnalyzer:
             # 取得した記事の一覧表示（最初の3件）
             for i, item in enumerate(news_items[:3], 1):
                 self.colored_print(f"  {i}. {item['title'][:70]}...", Fore.WHITE)
-                self.colored_print(f"     📅 {item['time']} | 🏢 {item['source']}", Fore.LIGHTBLACK_EX)
+                self.colored_print(f"    📅 {item['time']} | 🏢 {item['source']}", Fore.LIGHTBLACK_EX)
             
             if len(news_items) > 3:
-                self.colored_print(f"     ... 他 {len(news_items) - 3} 件", Fore.LIGHTBLACK_EX)
+                self.colored_print(f"    ... 他 {len(news_items) - 3} 件", Fore.LIGHTBLACK_EX)
             
             return news_items
             
@@ -192,7 +189,7 @@ class RealTimeNewsAnalyzer:
                 weeks = re.search(r'(\d+)', time_text)
                 if weeks:
                     return now - timedelta(weeks=int(weeks.group(1)))
-        
+    
         except Exception:
             pass
         
@@ -219,19 +216,30 @@ class RealTimeNewsAnalyzer:
             try:
                 self.colored_print(f"🤖 LLM分析開始 (試行 {attempt + 1}/{max_retries}, クエリ: {query})", Fore.MAGENTA)
 
-                messages = [{"role": "user", "content": prompt}]
-                completion = self.client.chat.completions.create(
-                    extra_headers={
-                        "HTTP-Referer": "https://realtime-news-analyzer.com",
-                        "X-Title": "Real-time News Analyzer",
-                    },
-                    model="mistralai/mistral-small",
-                    messages=messages,
-                    max_tokens=1500,
-                    temperature=0.3
-                )
+                # --- ▼▼▼ ここからが変更箇所 ▼▼▼ ---
+                url = f"{self.base_url}/chat/completions"
+                
+                headers = {
+                    "Authorization": f"Bearer {self.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://realtime-news-analyzer.com", # 任意ヘッダー
+                    "X-Title": "Real-time News Analyzer", # 任意ヘッダー
+                }
+                
+                payload = {
+                    "model": "mistralai/mistral-small",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1500,
+                    "temperature": 0.3
+                }
 
-                result = completion.choices[0].message.content
+                response = requests.post(url, headers=headers, json=payload, timeout=60)
+                response.raise_for_status() # HTTPエラーがあれば例外を発生させる
+                
+                response_data = response.json()
+                result = response_data['choices'][0]['message']['content']
+                # --- ▲▲▲ ここまでが変更箇所 ▲▲▲ ---
+
                 self.colored_print(f"✅ LLM分析完了 (クエリ: {query})", Fore.GREEN)
                 return result # 成功したら結果を返してループを抜ける
 
@@ -449,19 +457,29 @@ Important Notes:
             self.colored_print("  🎯 最終統合分析実行中", Fore.RED, Style.BRIGHT)
             self.colored_print(f"{'='*60}", Fore.RED, Style.BRIGHT)
             
-            messages = [{"role": "user", "content": prompt}]
-            completion = self.client.chat.completions.create(
-                extra_headers={
-                    "HTTP-Referer": "https://realtime-news-analyzer.com",
-                    "X-Title": "Real-time News Analyzer Final Summary",
-                },
-                model="mistralai/mistral-small",
-                messages=messages,
-                max_tokens=2000,
-                temperature=0.2
-            )
+            # --- ▼▼▼ ここからが変更箇所 ▼▼▼ ---
+            url = f"{self.base_url}/chat/completions"
             
-            final_result = completion.choices[0].message.content
+            headers = {
+                "Authorization": f"Bearer {self.openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://realtime-news-analyzer.com", # 任意ヘッダー
+                "X-Title": "Real-time News Analyzer Final Summary", # 任意ヘッダー
+            }
+            
+            payload = {
+                "model": "mistralai/mistral-small",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 2000,
+                "temperature": 0.2
+            }
+            
+            response = requests.post(url, headers=headers, json=payload, timeout=90)
+            response.raise_for_status()
+            
+            response_data = response.json()
+            final_result = response_data['choices'][0]['message']['content']
+            # --- ▲▲▲ ここまでが変更箇所 ▲▲▲ ---
             
             self.colored_print(f"\n🎯 最終投資判断", Fore.RED, Style.BRIGHT)
             print(final_result)
