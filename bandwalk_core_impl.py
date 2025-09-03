@@ -219,7 +219,7 @@ def check_band_walk(data, current_idx):
     
     return 'normal', '通常状態', False
 
-def analyze_recent_data(data, fund_title, days=10):
+def analyze_recent_data(data, fund_title, days=15):
     """過去N日の分析結果を表示"""
     colored_print(f"\n=== {fund_title} - 過去{days}日の分析結果 ===", Colors.BOLD + Colors.MAGENTA)
     colored_print("-" * 80, Colors.WHITE)
@@ -243,6 +243,8 @@ def analyze_recent_data(data, fund_title, days=10):
         # バンドとの価格差
         upper_diff = row.bb_upper - row.nav
         lower_diff = row.nav - row.bb_lower
+
+        print("　バンド幅:", upper_diff - lower_diff)
         
         # 状態表示
         status_color = "🔴" if action == "sell" else "🟢" if action == "buy" else "⚪"
