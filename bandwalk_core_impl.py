@@ -242,9 +242,7 @@ def analyze_recent_data(data, fund_title, days=15):
         
         # バンドとの価格差
         upper_diff = row.bb_upper - row.nav
-        lower_diff = row.nav - row.bb_lower
-
-        print("　バンド幅:", upper_diff - lower_diff)
+        lower_diff = row.nav - row.bb_lower        
         
         # 状態表示
         status_color = "🔴" if action == "sell" else "🟢" if action == "buy" else "⚪"
@@ -276,6 +274,7 @@ def analyze_recent_data(data, fund_title, days=15):
             position_color = Colors.WHITE
             position_status = ""
         
+        print("　バンド幅:", row.bb_upper - row.bb_lower)
         print(f"  バンド位置: ", end="")
         colored_print(f"{position:.3f} (0=下限, 1=上限) {position_status}", position_color)
         
