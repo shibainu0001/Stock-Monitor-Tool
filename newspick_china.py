@@ -229,7 +229,7 @@ class RealTimeNewsAnalyzer:
                 payload = {
                     "model": "mistralai/mistral-small",
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1500,
+                    "max_tokens": 3500,
                     "temperature": 0.3
                 }
 
@@ -281,16 +281,16 @@ Instructions:
 
 【クエリ「{query}」の分析結果】
 
-**影響度: 高/中/低**
+**影響度: 超大/高/中/低**
 
 **ポジティブ要因:**
-- yyyy/mm/dd: [記事タイトル] \n → 記事タイトル（日本語訳）とその影響
+- yyyy/mm/dd: [影響] [記事タイトル(原文)] \n → 記事タイトル（日本語訳）とその影響
 
 **ネガティブ要因:**
-- yyyy/mm/dd: [記事タイトル] \n → 記事タイトル（日本語訳）とその影響
+- yyyy/mm/dd: [影響] [記事タイトル(原文)] \n → 記事タイトル（日本語訳）とその影響
 
 **注目すべき記事:**
-- yyyy/mm/dd: [記事タイトル要約] \n → （日本語訳）] → 記事タイトル（日本語訳）と中国株への影響
+- yyyy/mm/dd: [影響] [記事タイトル要約(原文)] \n → 記事タイトル（日本語訳）と中国株への影響
 
 **総合評価:**
 [この検索結果全体の中国経済・株式市場への影響度合いと方向性]
@@ -322,19 +322,19 @@ Instructions:
 
 【クエリ「{query}」の分析結果】
 
-**影響度: 高/中/低**
+**影響度: 超大/高/中/低**
 
 **株価上昇要因:**
-- yyyy/mm/dd: [記事タイトル] \n → 記事タイトル（日本語訳）とその影響
+- yyyy/mm/dd: [影響] [記事タイトル(原文)] \n → 記事タイトル（日本語訳）とその影響
 
 **株価下落要因:**
-- yyyy/mm/dd: [記事タイトル] \n → 記事タイトル（日本語訳）とその影響
+- yyyy/mm/dd: [影響] [記事タイトル(原文)] \n → 記事タイトル（日本語訳）とその影響
 
 **個別企業への影響:**
-- [企業名]: [ニュース概要] \n → 記事タイトル（日本語訳）と影響: 上昇/下落/中立
+- [企業名]: [影響] [ニュース概要(原文)] \n → 記事タイトル（日本語訳）と影響: 上昇/下落/中立
 
 **注目すべき記事:**
-- yyyy/mm/dd: [記事タイトル] \n →  記事タイトル（日本語訳）と市場影響: [説明]
+- yyyy/mm/dd: [影響] [記事タイトル(原文)] \n →  記事タイトル（日本語訳）と市場影響: [説明]
 
 **総合評価:**
 [この検索結果全体の中国株式市場への影響度合いと方向性]
@@ -348,9 +348,9 @@ Important Notes:
 
     def search_and_analyze_realtime(self, queries, analysis_type="global", category_name=""):
         """検索と分析をリアルタイムで実行"""
-        self.colored_print(f"\n{'='*60}", Fore.BLUE, Style.BRIGHT)
-        self.colored_print(f" {datetime.now().strftime('%Y/%m/%d')} {category_name} - リアルタイム分析開始", Fore.BLUE, Style.BRIGHT)
-        self.colored_print(f"{'='*60}", Fore.BLUE, Style.BRIGHT)
+        self.colored_print(f"\n{'='*50}", Fore.BLUE, Style.BRIGHT)
+        self.colored_print(f"{datetime.now().strftime('%Y/%m/%d')} {category_name} - リアルタイム分析開始", Fore.BLUE, Style.BRIGHT)
+        self.colored_print(f"{'='*50}", Fore.BLUE, Style.BRIGHT)
         
         analysis_results = []
         
@@ -443,7 +443,10 @@ Create a final comprehensive judgment in JAPANESE using this format:
 【💡 推奨アクション】
 - [具体的な投資行動の提案]
 
-【⚠️  主要リスク要因】
+【💹 主要上昇要因】
+- [今後着目すべき重要な事柄]
+
+【📉 主要下落要因】
 - [今後注意すべき重要なリスク]
 
 【📈 セクター別見通し】
@@ -471,7 +474,7 @@ Important Notes:
             }
             
             payload = {
-                "model": "mistralai/mistral-small",
+                "model":"z-ai/glm-4.5-air:free", #"mistralai/mistral-small",
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 2000,
                 "temperature": 0.2
@@ -502,9 +505,9 @@ Important Notes:
 
     def run_realtime_analysis(self):
         """メイン実行プロセス"""
-        self.colored_print("="*70, Fore.MAGENTA, Style.BRIGHT)
-        self.colored_print(f"    🚀{datetime.now().strftime('%Y/%m/%d')} リアルタイム ニュース分析システム", Fore.MAGENTA, Style.BRIGHT)
-        self.colored_print("="*70, Fore.MAGENTA, Style.BRIGHT)
+        self.colored_print("="*50, Fore.MAGENTA, Style.BRIGHT)
+        self.colored_print(f"🚀{datetime.now().strftime('%Y/%m/%d')} リアルタイム ニュース分析システム", Fore.MAGENTA, Style.BRIGHT)
+        self.colored_print("="*50, Fore.MAGENTA, Style.BRIGHT)
         self.colored_print(f"🕐 開始時刻: {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", Fore.WHITE)
         self.colored_print("📝 検索→分析→結果表示をリアルタイムで実行", Fore.WHITE)
         
@@ -514,7 +517,7 @@ Important Notes:
             # "Federal Reserve interest rate",
             # "European economic outlook",
             # "global inflation trends",
-            "US China trade relations",
+            "US China trade deal",
             # "geopolitical risks markets"
         ]
         
@@ -545,9 +548,9 @@ Important Notes:
         # 3. 最終統合分析
         self.generate_comprehensive_summary()
         
-        self.colored_print(f"\n{'='*70}", Fore.MAGENTA, Style.BRIGHT)
+        self.colored_print(f"\n{'='*50}", Fore.MAGENTA, Style.BRIGHT)
         self.colored_print(f"✅ 分析完了 - {datetime.now().strftime('%H:%M:%S')}", Fore.MAGENTA, Style.BRIGHT)
-        self.colored_print(f"{'='*70}", Fore.MAGENTA, Style.BRIGHT)
+        self.colored_print(f"{'='*50}", Fore.MAGENTA, Style.BRIGHT)
 
 
 def main():
