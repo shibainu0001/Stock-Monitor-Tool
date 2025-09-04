@@ -10,6 +10,9 @@ BAND_WALK_DAYS = 6  # 固定値（実際は過去5日間を評価）
 BB_PERIOD = 20  # ボリンジャーバンド期間
 BB_STD = 2.0    # ボリンジャーバンド標準偏差
 MA25_PERIOD = 25  # 移動平均期間
+MACD_FAST = 12  # MACD短期EMA期間
+MACD_SLOW = 26  # MACD長期EMA期間
+MACD_SIGNAL = 9  # MACDシグナル期間
 
 # ANSI色コード定義
 class Colors:
@@ -40,6 +43,11 @@ class DataRow:
         self.bb_upper = None
         self.bb_lower = None
         self.ma25 = None
+        self.ema_fast = None  # 12日EMA
+        self.ema_slow = None  # 26日EMA
+        self.macd = None      # MACD線
+        self.macd_signal = None  # シグナル線
+        self.macd_histogram = None  # ヒストグラム
 
 def parse_date(date_str):
     """日付文字列をdatetimeオブジェクトに変換"""
@@ -100,6 +108,26 @@ def load_and_prepare_data(filename, fund_title):
         colored_print(f"データロードエラー: {e}", Colors.RED)
         return None
 
+def calculate_ema(data, period, start_idx):
+    """指数移動平均（EMA）を計算"""
+    if start_idx < period - 1:
+        return None
+    
+    # 最初のEMAはSMAで初期化
+    if start_idx == period - 1:
+        sum_values = 0
+        for i in range(period):
+            sum_values += data[start_idx - i].nav
+        return sum_values / period
+    
+    # EMA計算
+    alpha = 2.0 / (period + 1)
+    prev_ema = data[start_idx - 1].ema_fast if period == MACD_FAST else data[start_idx - 1].ema_slow
+    if prev_ema is None:
+        return None
+    
+    return alpha * data[start_idx].nav + (1 - alpha) * prev_ema
+
 def calculate_moving_average(data, period, start_idx):
     """移動平均を計算"""
     if start_idx < period - 1:
@@ -124,10 +152,56 @@ def calculate_standard_deviation(data, period, start_idx, mean_value):
     variance = sum_squares / period
     return math.sqrt(variance)
 
-def calculate_bollinger_bands(data):
-    """ボリンジャーバンドと移動平均を計算"""
+def calculate_macd_signal_ema(data, start_idx):
+    """MACDシグナル線のEMAを計算"""
+    if start_idx < MACD_SIGNAL - 1:
+        return None
+    
+    # MACDが計算されていない場合はNone
+    if data[start_idx].macd is None:
+        return None
+    
+    # 最初のシグナルEMAはSMAで初期化
+    if start_idx == MACD_SIGNAL - 1 or data[start_idx - 1].macd_signal is None:
+        # 過去MACD_SIGNAL日分のMACDの平均
+        sum_macd = 0
+        valid_count = 0
+        for i in range(MACD_SIGNAL):
+            if start_idx - i >= 0 and data[start_idx - i].macd is not None:
+                sum_macd += data[start_idx - i].macd
+                valid_count += 1
+        
+        if valid_count == 0:
+            return None
+        return sum_macd / valid_count
+    
+    # シグナル線EMA計算
+    alpha = 2.0 / (MACD_SIGNAL + 1)
+    prev_signal = data[start_idx - 1].macd_signal
+    if prev_signal is None:
+        return None
+    
+    return alpha * data[start_idx].macd + (1 - alpha) * prev_signal
+
+def calculate_indicators(data):
+    """ボリンジャーバンド、移動平均、MACDを計算"""
     
     for i in range(len(data)):
+        # EMA計算
+        data[i].ema_fast = calculate_ema(data, MACD_FAST, i)
+        data[i].ema_slow = calculate_ema(data, MACD_SLOW, i)
+        
+        # MACD計算
+        if data[i].ema_fast is not None and data[i].ema_slow is not None:
+            data[i].macd = data[i].ema_fast - data[i].ema_slow
+        
+        # MACDシグナル線計算
+        data[i].macd_signal = calculate_macd_signal_ema(data, i)
+        
+        # MACDヒストグラム計算
+        if data[i].macd is not None and data[i].macd_signal is not None:
+            data[i].macd_histogram = data[i].macd - data[i].macd_signal
+        
         # 20日移動平均（中央線）
         data[i].sma_20 = calculate_moving_average(data, BB_PERIOD, i)
         
@@ -219,6 +293,15 @@ def check_band_walk(data, current_idx):
     
     return 'normal', '通常状態', False
 
+def get_macd_color(value):
+    """MACD値に応じて色を返す"""
+    if value is None:
+        return Colors.WHITE
+    elif value > 0:
+        return Colors.GREEN
+    else:
+        return Colors.RED
+
 def analyze_recent_data(data, fund_title, days=15):
     """過去N日の分析結果を表示"""
     colored_print(f"\n=== {fund_title} - 過去{days}日の分析結果 ===", Colors.BOLD + Colors.MAGENTA)
@@ -281,6 +364,19 @@ def analyze_recent_data(data, fund_title, days=15):
         # バンドとの距離
         print(f"  上限との差: {upper_diff:+.0f}円, 下限との差: {lower_diff:+.0f}円")
         
+        # MACD表示（色分け）
+        if row.macd is not None and row.macd_signal is not None:
+            macd_color = get_macd_color(row.macd)
+            signal_color = get_macd_color(row.macd_signal)
+            histogram_color = get_macd_color(row.macd_histogram)
+            
+            print(f"  MACD: ", end="")
+            colored_print(f"{row.macd:+.2f}", macd_color)
+            print(f"  シグナル: ", end="")
+            colored_print(f"{row.macd_signal:+.2f}", signal_color)
+            print(f"  ヒストグラム: ", end="")
+            colored_print(f"{row.macd_histogram:+.2f}", histogram_color)
+        
         # 状態メッセージ
         if action == "sell":
             message_color = Colors.RED + Colors.BOLD
@@ -314,8 +410,8 @@ def main():
     if data is None:
         return
     
-    # ボリンジャーバンドの計算
-    data = calculate_bollinger_bands(data)
+    # ボリンジャーバンドとMACDの計算
+    data = calculate_indicators(data)
     
     # 過去10日の分析
     analyze_recent_data(data, fund_title, days=10)
