@@ -525,6 +525,153 @@ def analyze_recent_data(data, fund_title, days=15):
         colored_print(message, message_color)
         print()
 
+
+def draw_recent_chart(data, fund_title, days=7):
+    """過去N日の株価とボリンジャーバンド、MACDヒストグラムをASCIIチャートで表示"""
+    try:
+        import asciichartpy
+    except ImportError:
+        colored_print("asciichartpyがインストールされていません。", Colors.RED)
+        colored_print("pip install asciichartpy でインストールしてください。", Colors.YELLOW)
+        return
+    
+    # 最新のデータから過去N日分を取得
+    start_idx = max(0, len(data) - days)
+    recent_data = data[start_idx:]
+    
+    # 有効なデータのみを抽出
+    valid_data = [row for row in recent_data if row.bb_upper is not None and row.bb_lower is not None]
+    
+    if len(valid_data) < 2:
+        colored_print("グラフ表示に必要なデータが不足しています。", Colors.RED)
+        return
+    
+    # データ準備
+    dates = [row.date.strftime('%m/%d') for row in valid_data]
+    prices = [row.nav for row in valid_data]
+    bb_upper = [row.bb_upper for row in valid_data]
+    bb_lower = [row.bb_lower for row in valid_data]
+    sma_20 = [row.sma_20 for row in valid_data]
+    macd_histogram = [row.macd_histogram if row.macd_histogram is not None else 0 for row in valid_data]
+    
+    # グラフ表示
+    colored_print(f"\n=== {fund_title} - 過去{len(valid_data)}日のチャート ===", Colors.BOLD + Colors.MAGENTA)
+    colored_print("-" * 60, Colors.WHITE)
+    
+    # 価格範囲の調整（見やすくするため）
+    min_price = min(min(bb_lower), min(prices))
+    max_price = max(max(bb_upper), max(prices))
+    price_range = max_price - min_price
+    margin = price_range * 0.05  # 5%のマージン
+    
+    # ===== 株価・ボリンジャーバンドグラフ =====
+    chart_config = {
+        'height': 15,
+        'format': lambda x, i: f'{int(x):,}',
+        'min': min_price - margin,
+        'max': max_price + margin
+    }
+    
+    # 複数系列を同一グラフに表示
+    colored_print("📈 株価 & ボリンジャーバンド", Colors.BOLD + Colors.GREEN)
+    
+    # 複数の系列をまとめて表示
+    series = [sma_20, prices, bb_upper, bb_lower]
+    colors = [
+        asciichartpy.yellow,   # 中央線 (黄)
+        asciichartpy.green,    # 株価 (緑)
+        asciichartpy.red,      # ボリンジャーバンド上限 (赤)
+        asciichartpy.cyan      # ボリンジャーバンド下限 (青)
+    ]
+    
+    # カラー設定を含む設定
+    chart_config_multi = {
+        'height': 20,
+        'min': min_price - margin,
+        'max': max_price + margin,
+        'colors': colors
+    }
+    
+    print(asciichartpy.plot(series, chart_config_multi))
+    
+    # 凡例表示
+    colored_print("    凡例:", Colors.BOLD + Colors.WHITE)
+    colored_print("    🔴 ボリンジャーバンド上限 (+2σ)", Colors.RED)
+    colored_print("    🟢 株価 (NAV)", Colors.GREEN)
+    colored_print("    🟡 中央線 (20日SMA)", Colors.YELLOW)
+    colored_print("    🔵 ボリンジャーバンド下限 (-2σ)", Colors.BLUE)
+    
+    # 日付ラベル表示
+    date_line = "    "  # インデント調整
+    for i, date in enumerate(dates):
+        if i == 0:
+            date_line += date
+        else:
+            # 適切な間隔で日付を配置
+            spaces = " " * max(1, 8 - len(date))  # 調整値
+            date_line += spaces + date
+    colored_print(date_line.replace("   ", " "), Colors.CYAN)
+    
+    print()
+    
+    # ===== MACDヒストグラムグラフ =====
+    colored_print("📊 MACDヒストグラム", Colors.BOLD + Colors.MAGENTA)
+    
+    # MACDヒストグラムの範囲設定（0を中央にする）
+    hist_abs_max = max(abs(min(macd_histogram)), abs(max(macd_histogram)))
+    hist_margin = hist_abs_max * 0.1
+    
+    # ゼロを中央にするため、上下対称の範囲を設定
+    chart_min = -(hist_abs_max + hist_margin)
+    chart_max = hist_abs_max + hist_margin
+    
+    # MACDヒストグラム用の設定（0ライン + ヒストグラム）
+    hist_config = {
+        'height': 12,
+        'min': chart_min,
+        'max': chart_max,
+        'colors': [
+            asciichartpy.white,    # ゼロライン (白)
+            asciichartpy.cyan      # ヒストグラム (シアン)
+        ]
+    }
+    
+    # ゼロラインとヒストグラムを表示
+    zero_line = [0] * len(macd_histogram)
+    hist_series = [zero_line, macd_histogram]
+    
+    print(asciichartpy.plot(hist_series, hist_config))
+    
+    # MACDヒストグラム凡例
+    # colored_print("    凡例:", Colors.BOLD + Colors.WHITE)
+    # colored_print("    ⚪ ゼロライン", Colors.WHITE)
+    # colored_print("    🔵 MACDヒストグラム (正: 買い優勢, 負: 売り優勢)", Colors.CYAN)
+    
+    # MACDヒストグラム用の日付ラベル表示
+    colored_print(date_line.replace("   ", " "), Colors.CYAN)
+    
+    print()
+    
+    # 数値サマリー
+    # colored_print("=== 数値サマリー ===", Colors.BOLD + Colors.WHITE)
+    latest = valid_data[-1]
+    # colored_print(f"最新価格: {latest.nav:,.0f}円", Colors.GREEN)
+    # colored_print(f"上限: {latest.bb_upper:,.0f}円 (差: {latest.bb_upper - latest.nav:+.0f}円)", Colors.RED)
+    # colored_print(f"中央: {latest.sma_20:,.0f}円 (差: {latest.sma_20 - latest.nav:+.0f}円)", Colors.YELLOW)
+    # colored_print(f"下限: {latest.bb_lower:,.0f}円 (差: {latest.nav - latest.bb_lower:+.0f}円)", Colors.BLUE)
+    
+    # バンド内位置
+    position = calculate_band_position(latest.nav, latest.bb_upper, latest.bb_lower)
+    # colored_print(f"バンド内位置: {position:.1%} (0%=下限, 100%=上限)", Colors.CYAN)
+    
+    # MACDサマリー
+    # if latest.macd_histogram is not None:
+        # hist_color = Colors.GREEN if latest.macd_histogram > 0 else Colors.RED if latest.macd_histogram < 0 else Colors.WHITE
+        # print(f"MACDヒストグラム: ", end="")
+        # colored_print(f"{latest.macd_histogram:+.3f}", hist_color)
+    
+    print()
+
 def main():
     """メイン処理"""
     # 引数チェック
@@ -562,5 +709,11 @@ def main():
     # 過去10日の分析
     analyze_recent_data(data, fund_title, days=100)
 
+    # 7日間のチャート表示を追加
+    draw_recent_chart(data, fund_title, days=25)
+
+
 if __name__ == "__main__":
     main()
+
+    
