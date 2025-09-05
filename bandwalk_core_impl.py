@@ -14,6 +14,12 @@ MACD_FAST = 12  # MACD短期EMA期間
 MACD_SLOW = 26  # MACD長期EMA期間
 MACD_SIGNAL = 9  # MACDシグナル期間
 
+# MACDシグナル設定（引数で変更可能）
+UPPER_THRESHOLD = 0.5  # 上限閾値
+LOWER_THRESHOLD = -0.5  # 下限閾値
+UPPER_CROSS_RATE = 0.7  # 上限クロス率（70%）
+LOWER_CROSS_RATE = 0.7  # 下限クロス率（70%）
+
 # ANSI色コード定義
 class Colors:
     RED = '\033[91m'
@@ -30,6 +36,21 @@ class Colors:
 def colored_print(text, color=Colors.WHITE):
     """色付きprint"""
     print(f"{color}{text}{Colors.END}")
+
+class MacdSignalState:
+    """MACDシグナル状態管理クラス"""
+    def __init__(self):
+        self.reset()
+    
+    def reset(self):
+        """状態をリセット"""
+        self.max_histogram = None
+        self.min_histogram = None
+        self.has_declined = False  # 下降を確認したフラグ
+        self.has_inclined = False  # 上昇を確認したフラグ
+        self.sell_signal = False
+        self.buy_signal = False
+        self.last_histogram = None
 
 class DataRow:
     """データ行を表すクラス"""
@@ -48,6 +69,10 @@ class DataRow:
         self.macd = None      # MACD線
         self.macd_signal = None  # シグナル線
         self.macd_histogram = None  # ヒストグラム
+        # MACDシグナル関連
+        self.macd_sell_signal = False
+        self.macd_buy_signal = False
+        self.signal_reason = ""
 
 def parse_date(date_str):
     """日付文字列をdatetimeオブジェクトに変換"""
@@ -183,8 +208,100 @@ def calculate_macd_signal_ema(data, start_idx):
     
     return alpha * data[start_idx].macd + (1 - alpha) * prev_signal
 
+def detect_zero_cross(current_histogram, previous_histogram):
+    """ゼロクロスを検出"""
+    if current_histogram is None or previous_histogram is None:
+        return False
+    
+    # 前回と今回で符号が変わった場合はゼロクロス
+    return (current_histogram > 0 and previous_histogram <= 0) or \
+           (current_histogram < 0 and previous_histogram >= 0)
+
+def update_macd_signals(data, signal_state, current_idx):
+    """MACDシグナルを更新"""
+    if current_idx == 0:
+        return
+    
+    current_row = data[current_idx]
+    prev_row = data[current_idx - 1]
+    
+    current_histogram = current_row.macd_histogram
+    prev_histogram = prev_row.macd_histogram
+    
+    if current_histogram is None:
+        return
+    
+    # ゼロクロスチェック
+    if detect_zero_cross(current_histogram, prev_histogram):
+        signal_state.reset()
+        signal_state.last_histogram = current_histogram
+        # ゼロクロス情報を記録
+        if current_histogram > 0:
+            current_row.signal_reason = "MACD売買シグナル: なし - ゼロクロス上抜け"
+        else:
+            current_row.signal_reason = "MACD売買シグナル: なし - ゼロクロス下抜け"
+        return
+    
+    # 最大値・最小値を更新
+    if signal_state.max_histogram is None or current_histogram > signal_state.max_histogram:
+        signal_state.max_histogram = current_histogram
+    
+    if signal_state.min_histogram is None or current_histogram < signal_state.min_histogram:
+        signal_state.min_histogram = current_histogram
+    
+    # 下降・上昇フラグの更新
+    if signal_state.last_histogram is not None:
+        if current_histogram < signal_state.last_histogram:
+            signal_state.has_declined = True
+        if current_histogram > signal_state.last_histogram:
+            signal_state.has_inclined = True
+    
+    # 売りシグナル判定
+    if (not signal_state.sell_signal and 
+        signal_state.has_declined and 
+        signal_state.max_histogram is not None and
+        signal_state.max_histogram > UPPER_THRESHOLD):
+        
+        cross_level = signal_state.max_histogram * UPPER_CROSS_RATE
+        if current_histogram < cross_level:
+            signal_state.sell_signal = True
+            current_row.macd_sell_signal = True
+            current_row.signal_reason = f"MACD売りシグナル: 最大値{signal_state.max_histogram:.3f}の{UPPER_CROSS_RATE*100:.0f}%({cross_level:.3f})を下抜け"
+    
+    # 買いシグナル判定
+    if (not signal_state.buy_signal and 
+        signal_state.has_inclined and 
+        signal_state.min_histogram is not None and
+        signal_state.min_histogram < LOWER_THRESHOLD):
+        
+        cross_level = signal_state.min_histogram * LOWER_CROSS_RATE
+        if current_histogram > cross_level:
+            signal_state.buy_signal = True
+            current_row.macd_buy_signal = True
+            current_row.signal_reason = f"MACD買いシグナル: 最小値{signal_state.min_histogram:.3f}の{LOWER_CROSS_RATE*100:.0f}%({cross_level:.3f})を上抜け"
+    
+    # シグナル継続中の場合
+    if signal_state.sell_signal and not current_row.macd_sell_signal:
+        current_row.macd_sell_signal = True
+        current_row.signal_reason = "MACD売りシグナル継続中"
+    
+    if signal_state.buy_signal and not current_row.macd_buy_signal:
+        current_row.macd_buy_signal = True
+        current_row.signal_reason = "MACD買いシグナル継続中"
+    
+    # シグナルが出ていない場合の基本情報を設定
+    if not current_row.signal_reason:
+        if signal_state.max_histogram is not None and signal_state.min_histogram is not None:
+            if current_histogram > 0:
+                current_row.signal_reason = f"MACD売買シグナル: なし - プラス圏内 (最大値: {signal_state.max_histogram:.3f}, 現在値: {current_histogram:.3f})"
+            else:
+                current_row.signal_reason = f"MACD売買シグナル: なし - マイナス圏内 (最小値: {signal_state.min_histogram:.3f}, 現在値: {current_histogram:.3f})"
+    
+    signal_state.last_histogram = current_histogram
+
 def calculate_indicators(data):
     """ボリンジャーバンド、移動平均、MACDを計算"""
+    signal_state = MacdSignalState()
     
     for i in range(len(data)):
         # EMA計算
@@ -201,6 +318,9 @@ def calculate_indicators(data):
         # MACDヒストグラム計算
         if data[i].macd is not None and data[i].macd_signal is not None:
             data[i].macd_histogram = data[i].macd - data[i].macd_signal
+        
+        # MACDシグナル判定
+        update_macd_signals(data, signal_state, i)
         
         # 20日移動平均（中央線）
         data[i].sma_20 = calculate_moving_average(data, BB_PERIOD, i)
@@ -305,6 +425,7 @@ def get_macd_color(value):
 def analyze_recent_data(data, fund_title, days=15):
     """過去N日の分析結果を表示"""
     colored_print(f"\n=== {fund_title} - 過去{days}日の分析結果 ===", Colors.BOLD + Colors.MAGENTA)
+    colored_print(f"MACD設定: 上限閾値={UPPER_THRESHOLD}, 下限閾値={LOWER_THRESHOLD}, 上限クロス率={UPPER_CROSS_RATE*100:.0f}%, 下限クロス率={LOWER_CROSS_RATE*100:.0f}%", Colors.BLUE)
     colored_print("-" * 80, Colors.WHITE)
     
     # 最新のデータから過去N日分を取得
@@ -331,9 +452,16 @@ def analyze_recent_data(data, fund_title, days=15):
         status_color = "🔴" if action == "sell" else "🟢" if action == "buy" else "⚪"
         bandwalk_mark = "🚨" if is_bandwalk else ""
         
+        # MACDシグナル表示
+        macd_signal_mark = ""
+        if row.macd_sell_signal:
+            macd_signal_mark = "📉"
+        elif row.macd_buy_signal:
+            macd_signal_mark = "📈"
+        
         # 日付表示（色付き）
         date_str = row.date.strftime('%Y/%m/%d')
-        colored_print(f"{fund_title} {date_str} {status_color}{bandwalk_mark}", Colors.BOLD + Colors.CYAN)
+        colored_print(f"{fund_title} {date_str} {status_color}{bandwalk_mark}{macd_signal_mark}", Colors.BOLD + Colors.CYAN)
         
         # 価格表示
         change_color = Colors.RED if row.daily_change < 0 else Colors.GREEN if row.daily_change > 0 else Colors.WHITE
@@ -377,6 +505,12 @@ def analyze_recent_data(data, fund_title, days=15):
             print(f"  ヒストグラム: ", end="")
             colored_print(f"{row.macd_histogram:+.2f}", histogram_color)
         
+        # MACDシグナル表示（常に表示）
+        if row.signal_reason:
+            signal_color = Colors.RED + Colors.BOLD if row.macd_sell_signal else Colors.GREEN + Colors.BOLD if row.macd_buy_signal else Colors.CYAN
+            print(f"  📊 ", end="")
+            colored_print(row.signal_reason, signal_color)
+        
         # 状態メッセージ
         if action == "sell":
             message_color = Colors.RED + Colors.BOLD
@@ -395,9 +529,21 @@ def main():
     """メイン処理"""
     # 引数チェック
     if len(sys.argv) < 4:
-        colored_print("使用方法: python script.py <id> <output_dir_base> <fund_title>", Colors.RED)
-        colored_print("例: python script.py 123456 ./output 'サンプルファンド'", Colors.YELLOW)
+        colored_print("使用方法: python script.py <id> <output_dir_base> <fund_title> [upper_threshold] [lower_threshold] [upper_cross_rate] [lower_cross_rate]", Colors.RED)
+        colored_print("例: python script.py 123456 ./output 'サンプルファンド' 0.5 -0.5 0.7 0.6", Colors.YELLOW)
         sys.exit(1)
+    
+    # パラメータ設定
+    global UPPER_THRESHOLD, LOWER_THRESHOLD, UPPER_CROSS_RATE, LOWER_CROSS_RATE
+    
+    if len(sys.argv) >= 5:
+        UPPER_THRESHOLD = float(sys.argv[4])
+    if len(sys.argv) >= 6:
+        LOWER_THRESHOLD = float(sys.argv[5])
+    if len(sys.argv) >= 7:
+        UPPER_CROSS_RATE = float(sys.argv[6])
+    if len(sys.argv) >= 8:
+        LOWER_CROSS_RATE = float(sys.argv[7])
     
     # データ読み込み
     id = sys.argv[1]
@@ -414,7 +560,7 @@ def main():
     data = calculate_indicators(data)
     
     # 過去10日の分析
-    analyze_recent_data(data, fund_title, days=10)
+    analyze_recent_data(data, fund_title, days=100)
 
 if __name__ == "__main__":
     main()
