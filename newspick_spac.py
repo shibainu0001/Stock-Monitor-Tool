@@ -660,8 +660,8 @@ Important Notes:
         )
         
         # 分析間の待機時間
-        self.colored_print(f"\n⏳ セッション切替のため30秒待機中...", Fore.YELLOW)
-        time.sleep(30)
+        self.colored_print(f"\n⏳ セッション切替のため5秒待機中...", Fore.YELLOW)
+        time.sleep(5)
         
         # 2. MSCI ACWIをリアルタイム分析
         self.search_and_analyze_realtime(
@@ -671,8 +671,8 @@ Important Notes:
         )
         
         # 分析間の待機時間
-        self.colored_print(f"\n⏳ セッション切替のため30秒待機中...", Fore.YELLOW)
-        time.sleep(30)
+        self.colored_print(f"\n⏳ セッション切替のため5秒待機中...", Fore.YELLOW)
+        time.sleep(5)
         
         # 3. S&P 500をリアルタイム分析
         self.search_and_analyze_realtime(
